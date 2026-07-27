@@ -24,7 +24,7 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::$8008-8900-9408:role/github-actions-hello-world
+          role-to-assume: arn:aws:iam::800889009408:role/github-actions-hello-world
           aws-region: us-east-1
 
       - name: Set up SAM CLI
