@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  GitHub Actions OIDC Identity Provider + IAM Role
+  Deploy this ONCE in your AWS account.
+  After this, GitHub Actions can authenticate to AWS with no stored secrets.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: revanth07-dev
+    Description: Your GitHub username or organisation
+
+  GitHubRepo:
+    Type: String
+    Default: Lambda-OIDC
+    Description: Your GitHub repository name
+
+  RoleName:
+    Type: String
+    Default: github-actions-hello-world
+    Description: Name of the IAM role GitHub Actions will assume
+
+Resources:
+
+  # ── GitHub OIDC Identity Provider ───────────────────────────────
+  # Tells AWS: "Trust tokens signed by GitHub Actions"
+  # Only needs to be created once per AWS account.
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # ── IAM Role for GitHub Actions ─────────────────────────────────
+  # GitHub Actions assumes this role via OIDC.
+  # The Condition locks it to YOUR repo only —
+  # no other GitHub repo can assume this role.
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Assumed by GitHub Actions via OIDC — no static keys needed
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOIDCProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Only this repo can assume the role
+                # Change to :ref:refs/heads/main to restrict to main branch only
+                token.actions.githubusercontent.com:sub:
+                  !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+
+      # Permissions GitHub Actions needs to run SAM deploy
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/IAMFullAccess
+
+Outputs:
+  OIDCProviderArn:
+    Description: GitHub OIDC provider ARN
+    Value: !GetAtt GitHubOIDCProvider.Arn
+
+  RoleArn:
+    Description: Paste this ARN into your deploy.yml role-to-assume field
+    Value: !GetAtt GitHubActionsRole.Arn
